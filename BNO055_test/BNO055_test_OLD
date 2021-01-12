@@ -1,0 +1,131 @@
+#include <M5Core2.h>
+#include <Wire.h>
+#include <Arduino.h>
+
+typedef struct{
+	float x,y,z;
+}EULAR;
+
+typedef struct{
+  float x,y,z,w;
+}QUATERNION;
+
+QUATERNION q;
+EULAR e;
+
+const uint8_t BNO055_ADRS = 0x29;
+
+void I2C_Read_NBytes(uint8_t driver_Addr, uint8_t start_Addr, uint8_t number_Bytes, uint8_t *read_Buffer);
+void I2C_Write_NBytes(uint8_t driver_Addr, uint8_t *write_Buffer);
+bool BNO055_init(uint8_t device_address);
+QUATERNION get_quaternion(uint8_t device_address);
+EULAR get_eular(uint8_t device_address);
+
+void setup() {
+  // put your setup code here, to run once:
+  M5.begin();
+
+  M5.Lcd.fillScreen(BLACK);
+  M5.Lcd.setTextSize(2);
+  M5.Lcd.setCursor(0, 10);
+  M5.Lcd.println("[INFO]start connection");
+
+  //check connection 
+  byte error;
+  Wire1.beginTransmission(BNO055_ADRS);
+  error = Wire1.endTransmission();
+  if (error == 0){
+    M5.Lcd.println("[INFO]connection success");
+  }else{
+    M5.Lcd.println("[INFO]connection failed");
+  }
+
+  BNO055_init(BNO055_ADRS);
+
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+
+  //q = get_quaternion(BNO055_ADRS);
+  e = get_eular(BNO055_ADRS);
+  
+  M5.Lcd.setCursor(0, 50);
+  M5.Lcd.printf("%f,%f,%f", e.x, e.y, e.z);
+  delay(50);
+}
+
+void I2C_Read_NBytes(uint8_t driver_Addr, uint8_t start_Addr, uint8_t number_Bytes, uint8_t *read_Buffer){
+    
+  Wire1.beginTransmission(driver_Addr);
+  Wire1.write(start_Addr);  
+  Wire1.endTransmission(false);
+  uint8_t i = 0;
+  Wire1.requestFrom(driver_Addr,number_Bytes);
+  
+  //! Put read results in the Rx buffer
+  while (Wire1.available()) {
+    read_Buffer[i++] = Wire1.read();
+  }        
+}
+
+void I2C_Write_NBytes(uint8_t driver_Addr, uint8_t *write_Buffer){
+
+  Wire1.beginTransmission(driver_Addr);
+  Wire1.write(*write_Buffer);
+  Wire1.endTransmission();
+
+}
+
+bool BNO055_init(uint8_t device_address){
+  //uint8_t bno_mode_senddata[] = {0x3d,0x08};
+  //I2C_Write_NBytes(device_address<<1, bno_mode_senddata);
+  //I2C_Write_NBytes(device_address, bno_mode_senddata);
+  Wire1.beginTransmission(device_address);
+  Wire1.write(0x3d);
+  Wire1.write(0x08);
+  Wire1.endTransmission();
+
+  return 1;
+}
+
+QUATERNION get_quaternion(uint8_t device_address){
+  uint8_t bno_readquat_address = 0x20;
+  uint8_t bno_receivedata[16];
+  int16_t quat[4];
+
+  //I2C_Read_NBytes(device_address<<1,bno_readquat_address,16,bno_receivedata);
+  I2C_Read_NBytes(device_address,bno_readquat_address,16,bno_receivedata);
+  quat[0] = bno_receivedata[1] << 8 | bno_receivedata[0];
+  quat[1] = bno_receivedata[3] << 8 | bno_receivedata[2];
+  quat[2] = bno_receivedata[5] << 8 | bno_receivedata[4];
+  quat[3] = bno_receivedata[7] << 8 | bno_receivedata[6];
+
+  const float NORM = 16384.0;
+  QUATERNION q = { (float)quat[1]/NORM,(float)quat[2]/NORM,(float)quat[3]/NORM,(float)quat[0]/NORM };
+  return q;
+}
+
+EULAR get_eular(uint8_t device_address){
+
+	QUATERNION q = get_quaternion(device_address);
+	EULAR e;
+	// roll (x-axis rotation)
+	double sinr_cosp = +2.0 * (q.w * q.x + q.y * q.z);
+	double cosr_cosp = +1.0 - 2.0 * (q.x * q.x + q.y * q.y);
+	e.x = atan2(sinr_cosp, cosr_cosp);
+
+	// pitch (y-axis rotation)
+	double sinp = +2.0 * (q.w * q.y - q.z * q.x);
+	if (fabs(sinp) >= 1)
+		e.y = copysign(3.1415926535 / 2, sinp); // use 90 degrees if out of range
+	else
+		e.y = asin(sinp);
+
+	// yaw (z-axis rotation)
+	double siny_cosp = +2.0 * (q.w * q.z + q.x * q.y);
+	double cosy_cosp = +1.0 - 2.0 * (q.y * q.y + q.z * q.z);
+	e.z = atan2(siny_cosp, cosy_cosp);
+
+	return e;
+}

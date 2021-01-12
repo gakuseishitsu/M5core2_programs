@@ -1,0 +1,45 @@
+#include <M5Core2.h>
+
+
+void setup() {
+    // put your setup code here, to run once:
+    M5.begin();
+
+    M5.Lcd.fillScreen(BLACK);
+    M5.Lcd.setTextSize(2);
+    M5.Lcd.setCursor(0, 10);
+    M5.Lcd.println("[INFO]start connection");
+
+    Serial.begin(115200);
+
+    RS401CR_CMD36_set_torque(&Serial, 2, 1);
+}
+
+void loop() {
+    // put your main code here, to run repeatedly:
+
+    delay(50);
+
+}
+
+void RS401CR_CMD36_set_torque(HardwareSerial *uart, int servo_id, int servo_mode){
+	unsigned char sendbuf[32];
+	sendbuf[0] = (unsigned char) (0xFA); //header1
+	sendbuf[1] = (unsigned char) (0xAF); //header2
+	sendbuf[2] = (unsigned char) (servo_id); //servo ID
+	sendbuf[3] = (unsigned char) (0x00); //flg
+	sendbuf[4] = (unsigned char) (0x24); //addres(0x24=36)
+	sendbuf[5] = (unsigned char) (0x01); //length(4byte)
+	sendbuf[6] = (unsigned char) (0x01); //numver
+	sendbuf[7] = (unsigned char)((servo_mode&0x00FF)); // ON/OFF flg
+
+	// check sum
+	unsigned char sum;
+	sum = sendbuf[2];
+	for (int i = 3; i < 8; i++) {
+		sum = (unsigned char) (sum ^ sendbuf[i]);
+	}
+	sendbuf[8] = sum;
+	//HAL_UART_Transmit(huart,(uint8_t *)sendbuf,9,3000);
+    uart->write(sendbuf,9);
+}
